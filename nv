@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Defaults
+SOCK_PATH="${HOME}/.neovide.sock"
+BIN_PATH='/opt/homebrew/bin'
+
+# Make sure we're on a mac
+if [ "$(uname -s)" != 'Darwin' ]; then
+    echo 'Error: This script can run only on macOS'
+    exit 1
+fi
+
+# Set up binaries
+for B in nvim neovide; do 
+    W="$(which "$B" 2>/dev/null)"
+    D="${W-${BIN_PATH}/${B}}"
+    if ! which "$D" >/dev/null 2>/dev/null; then
+        echo "Error: Can't find $B: '$D'" >&2
+        exit 1
+    fi
+    declare "$( \
+            echo -n "$B" \
+            | tr '[:lower:]' '[:upper:]' \
+        )=${D}"
+done
+
+# Make sure neovide and nvim are running properly
+PS="$( \
+    ps -o command -u "$USER" \
+    | fgrep "$SOCK_PATH" \
+)"
+case  $( \
+        for B in "$NVIM" "$NEOVIDE"; do 
+            echo -n "$PS" \
+            | egrep -c "^$B"
+        done \
+        | tr -dc 0-9 \
+        ) in
+    11) # Both neovide and nvim are running
+        : # Nothing to do here
+        ;;
+    00) # Neither neovide nor nvim is running
+        rm -f "$SOCK_PATH"
+        echo -n 'Starting neovide with neovim server...'
+        "$NEOVIDE" \
+            --fork \
+            --no-tabs \
+            -- \
+            --listen "$SOCK_PATH"
+        while ! [ -e "$SOCK_PATH" ]; do
+            sleep .1
+            echo -n '.'
+        done
+        echo ''
+        ;;
+    *)
+        echo -e "Error: Something's wrong, see what's running:\n>=== CUT ===<\n${PS}\n>=== CUT ===<" >&2
+        exit 1
+        ;;
+esac
+
+# Wait for the Neovide GUI window to come up
+while ! osascript -e 'tell the application named "neovide" to activate' 2>/dev/null; do
+    sleep .1
+done
+
+# Open / create / report file(s)
+for F in "$@"; do
+    if ! [ -e "$F" ]; then
+        if [ -L "$F" ] || ! echo -n '' 2>/dev/null >"$F"; then
+            echo "Error: Not an ordinary file: '$F'" >&2
+            continue
+        fi
+    fi
+    R="$(realpath "$F")"
+    if [ -f "$R" ]; then
+        "$NVIM" --server "$SOCK_PATH" --remote "$R"
+    else
+        echo "Error: Smth wrong with: '$F'→'$R'" >&2
+        continue
+    fi
+    sleep .1
+done
+
