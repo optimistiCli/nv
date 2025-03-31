@@ -24,6 +24,18 @@ for B in nvim neovide; do
         )=${D}"
 done
 
+# Set up path to newer scp
+OPENSSH_BIN="$( \
+    dirname "$( \
+        ls -t1 $( \
+            fd -p '/openssh/.*/bin/scp$' \
+                --type executable \
+                /opt/homebrew/Cellar) \
+                | head -n 1 \
+    )" \
+)"
+export PATH="$OPENSSH_BIN:$PATH"
+
 # Make sure neovide and nvim are running properly
 PS="$( \
     ps -o command -u "$USER" \
